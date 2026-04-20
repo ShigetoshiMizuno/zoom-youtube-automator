@@ -1,0 +1,10 @@
+*.mp4
+*.m4a
+*.mp3
+*.wav
+*.png
+*.jpg
+*.jpeg
+.env
+__pycache__/
+*.pyc
