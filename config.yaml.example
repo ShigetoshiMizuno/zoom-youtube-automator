@@ -1,0 +1,13 @@
+obs:
+  host: localhost
+  port: 4455
+  password: "your_obs_websocket_password"
+  scene: "礼拝"
+  output_dir: "C:/録画"
+
+zoom:
+  meeting_id: "123-456-7890"
+  password: "your_zoom_password"
+
+youtube:
+  account: "your@gmail.com"
