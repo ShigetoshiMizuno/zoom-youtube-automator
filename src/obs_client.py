@@ -199,6 +199,23 @@ class OBSClient:
     # 仮想カメラ制御
     # ------------------------------------------------------------------
 
+    def get_virtual_cam_status(self):
+        """仮想カメラの状態を返す。
+
+        Returns:
+            output_active 属性を持つレスポンスオブジェクト
+
+        Raises:
+            OBSConnectionError: 接続が切れている場合
+        """
+        self._ensure_connected()
+        try:
+            return self._call_async(self._get_virtual_cam_status_async())
+        except OBSConnectionError:
+            raise
+        except Exception as exc:
+            raise OBSConnectionError(f"仮想カメラ状態の取得に失敗しました: {exc}") from exc
+
     def start_virtual_cam(self) -> None:
         """OBS 仮想カメラを起動する。
 
@@ -421,6 +438,10 @@ class OBSClient:
         """録画状態を取得する非同期実装。"""
         resp = self._ws_client.get_record_status()
         return bool(resp.output_active)
+
+    async def _get_virtual_cam_status_async(self):
+        """仮想カメラ状態を取得する非同期実装。"""
+        return self._ws_client.get_virtual_cam_status()
 
     async def _start_virtual_cam_async(self) -> None:
         """仮想カメラ起動の非同期実装。"""
