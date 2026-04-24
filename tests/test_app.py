@@ -526,5 +526,16 @@ class TestOnStopTransitions(unittest.TestCase):
         self.assertEqual(_shared_app.state, AppState.ERROR)
 
 
+# ---------------------------------------------------------------------------
+# WindowManager 統合テスト
+# ---------------------------------------------------------------------------
+
+class TestWindowManagerIntegration(unittest.TestCase):
+
+    def test_window_manager_is_none_without_config(self):
+        """headless=True + config=None の場合は _window_manager が None であること。"""
+        self.assertIsNone(_shared_app._window_manager)
+
+
 if __name__ == "__main__":
     unittest.main()

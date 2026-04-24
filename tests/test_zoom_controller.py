@@ -383,5 +383,33 @@ class TestIsMeetingActive(unittest.TestCase):
             self.assertFalse(ctrl.is_meeting_active())
 
 
+class TestGetWindowHwnd(unittest.TestCase):
+    def _make_controller(self) -> ZoomController:
+        cfg = ZoomConfig(meeting_id="123-456-7890")
+        return ZoomController(cfg)
+
+    def test_get_window_hwnd_returns_hwnd_when_found(self) -> None:
+        ctrl = self._make_controller()
+        with patch("src.zoom_controller.win32gui") as mock_win32gui:
+            def enum_windows_side_effect(callback: object, extra: object) -> None:
+                callback(5678, extra)
+
+            mock_win32gui.EnumWindows.side_effect = enum_windows_side_effect
+            mock_win32gui.IsWindowVisible.return_value = True
+            mock_win32gui.GetWindowText.return_value = "Zoom Meeting"
+
+            result = ctrl.get_window_hwnd()
+            self.assertEqual(result, 5678)
+
+    def test_get_window_hwnd_returns_none_when_not_found(self) -> None:
+        ctrl = self._make_controller()
+        with patch("src.zoom_controller.win32gui") as mock_win32gui:
+            mock_win32gui.EnumWindows.side_effect = lambda cb, extra: None
+            mock_win32gui.IsWindowVisible.return_value = False
+
+            result = ctrl.get_window_hwnd()
+            self.assertIsNone(result)
+
+
 if __name__ == "__main__":
     unittest.main()
