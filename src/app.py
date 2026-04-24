@@ -77,6 +77,7 @@ class App(tk.Tk):
         self._recording_start_time: Optional[datetime.datetime] = None
         self._elapsed_timer_id: Optional[str] = None
         self._obs_poll_id: Optional[str] = None
+        self._polling_active: bool = False
 
         self._build_ui()
 
@@ -269,6 +270,8 @@ class App(tk.Tk):
                 return
 
             try:
+                # バックグラウンドスレッドからUIスレッドへ委譲
+                # after() 自体が失敗してもZoom起動を継続するため try/except を維持
                 self.after(0, self._start_obs_poll)
             except Exception as exc:
                 logger.warning("OBSポーリング開始のスケジュールに失敗しました: %s", exc)
@@ -322,6 +325,8 @@ class App(tk.Tk):
                 return
 
             try:
+                # バックグラウンドスレッドからUIスレッドへ委譲
+                # after() 自体が失敗してもサムネイル生成を継続するため try/except を維持
                 self.after(
                     0,
                     lambda: self.lbl_status.config(
@@ -341,6 +346,8 @@ class App(tk.Tk):
                 thumbnail_path = None
 
             try:
+                # バックグラウンドスレッドからUIスレッドへ委譲
+                # after() 自体が失敗してもアップロードを継続するため try/except を維持
                 self.after(
                     0,
                     lambda: self.lbl_status.config(
@@ -594,7 +601,7 @@ class App(tk.Tk):
         tk.Button(
             btn_frame,
             text="エクスプローラーで開く",
-            command=lambda: subprocess.Popen(["explorer", "/select,", video_path]),
+            command=lambda: subprocess.Popen(["explorer", f"/select,{video_path}"]),
         ).pack(side="left", padx=4)
 
         tk.Button(
