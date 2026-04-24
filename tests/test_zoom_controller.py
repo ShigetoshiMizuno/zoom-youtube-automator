@@ -144,6 +144,16 @@ class TestRegistryCheck(unittest.TestCase):
             # 例外が発生しないことを確認
             ctrl._check_zoom_installed()
 
+    def test_raises_zoom_not_installed_error(self) -> None:
+        """HKEY_CLASSES_ROOT zoommtg が存在しない場合に ZoomNotInstalledError が送出されること。"""
+        ctrl = self._make_controller()
+        with patch("src.zoom_controller.winreg") as mock_winreg:
+            mock_winreg.HKEY_CLASSES_ROOT = 0x80000000
+            # zoommtg キー自体が存在しない → ZoomNotInstalledError
+            mock_winreg.OpenKey.side_effect = FileNotFoundError
+            with self.assertRaises(ZoomNotInstalledError):
+                ctrl._check_zoom_installed()
+
 
 class TestJoinMeeting(unittest.TestCase):
     def _make_controller(self, **kwargs: object) -> ZoomController:
@@ -266,6 +276,49 @@ class TestLeaveMeeting(unittest.TestCase):
 
             with self.assertRaises(ZoomWindowNotFoundError):
                 ctrl.leave_meeting()
+
+    def test_leave_meeting_fallback_send_message(self) -> None:
+        """PostMessage後もウィンドウが残る場合にSendMessageが呼ばれること。
+
+        IsWindow が PostMessage後もTrueを返し、SendMessage後にFalseを返す場合、
+        SendMessage は呼ばれ、TerminateProcess は呼ばれないこと。
+        """
+        ctrl = self._make_controller()
+        with patch("src.zoom_controller.win32gui") as mock_win32gui, \
+             patch("src.zoom_controller.win32con") as mock_win32con, \
+             patch("src.zoom_controller.win32process") as mock_win32process, \
+             patch("time.sleep"):
+            self._setup_window_found(mock_win32gui)
+            mock_win32con.WM_CLOSE = 16
+            # PostMessage後はTrueを返し、SendMessage後にFalseを返す
+            mock_win32gui.IsWindow.side_effect = [True, False]
+
+            ctrl.leave_meeting()
+
+            mock_win32gui.SendMessage.assert_called_once_with(1234, 16, 0, 0)
+            mock_win32process.TerminateProcess.assert_not_called()
+
+    def test_leave_meeting_fallback_terminate_process(self) -> None:
+        """SendMessage後もウィンドウが残る場合にTerminateProcessが呼ばれること。
+
+        IsWindow が PostMessage後もSendMessage後もTrueを返す場合、
+        TerminateProcess が呼ばれること。
+        """
+        ctrl = self._make_controller()
+        with patch("src.zoom_controller.win32gui") as mock_win32gui, \
+             patch("src.zoom_controller.win32con") as mock_win32con, \
+             patch("src.zoom_controller.win32process") as mock_win32process, \
+             patch("time.sleep"):
+            self._setup_window_found(mock_win32gui)
+            mock_win32con.WM_CLOSE = 16
+            # PostMessage後もSendMessage後もTrueを返す
+            mock_win32gui.IsWindow.return_value = True
+            mock_win32gui.GetWindowThreadProcessId.return_value = (0, 9999)
+            mock_win32process.OpenProcess.return_value = MagicMock()
+
+            ctrl.leave_meeting()
+
+            mock_win32process.TerminateProcess.assert_called_once()
 
 
 class TestSetWindowPosition(unittest.TestCase):
