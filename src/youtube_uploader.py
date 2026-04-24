@@ -189,6 +189,8 @@ def _execute_upload(request, progress_callback) -> str:
         try:
             status, response = request.next_chunk()
             if response is not None:
+                if progress_callback is not None:
+                    progress_callback(100)
                 return response["id"]
             if status is not None and progress_callback is not None:
                 progress_callback(int(status.progress() * 100))

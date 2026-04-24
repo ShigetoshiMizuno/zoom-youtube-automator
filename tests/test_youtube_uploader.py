@@ -279,8 +279,8 @@ class TestUploadVideo(unittest.TestCase):
         with self.assertRaises(UploadError):
             upload_video(service, TEST_VIDEO, 'タイトル', '説明', None, 'public')
 
-        # time.sleep が3回呼ばれていること（指数バックオフ）
-        self.assertEqual(mock_time.sleep.call_count, 3)
+        # time.sleep が指数バックオフ値（1, 2, 4秒）で呼ばれていること
+        mock_time.sleep.assert_has_calls([call(1), call(2), call(4)])
 
     @patch('youtube_uploader._set_thumbnail')
     @patch('youtube_uploader.MediaFileUpload')
@@ -301,6 +301,12 @@ class TestUploadVideo(unittest.TestCase):
         upload_video(service, TEST_VIDEO, 'タイトル', '説明', TEST_THUMBNAIL, 'public')
 
         mock_set_thumbnail.assert_called_once_with(service, 'thumb_test_id', TEST_THUMBNAIL)
+
+    def test_invalid_privacy_raises_value_error(self):
+        """privacyに不正値を渡すとValueErrorが送出されること"""
+        service = self._make_service()
+        with self.assertRaises(ValueError):
+            upload_video(service, TEST_VIDEO, 'タイトル', '説明', None, 'private')
 
     @patch('youtube_uploader.MediaFileUpload')
     def test_progress_callback_receives_100_on_completion(self, mock_media_upload):
