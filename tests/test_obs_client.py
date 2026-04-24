@@ -60,6 +60,16 @@ class TestInit(unittest.TestCase):
         client = OBSClient(host="localhost", port=4455, password="")
         self.assertFalse(client.is_connected())
 
+    def test_output_dir_stored(self):
+        """output_dir が保持されること"""
+        client = OBSClient(host="localhost", port=4455, password="", output_dir="D:/録画")
+        self.assertEqual(client._output_dir, "D:/録画")
+
+    def test_output_dir_default_empty(self):
+        """output_dir 未指定時のデフォルト値が空文字列であること"""
+        client = OBSClient(host="localhost", port=4455, password="")
+        self.assertEqual(client._output_dir, "")
+
 
 # ---------------------------------------------------------------------------
 # connect / disconnect
@@ -157,6 +167,32 @@ class TestStartRecording(unittest.TestCase):
         client = OBSClient(host="localhost", port=4455, password="")
         with self.assertRaises(OBSConnectionError):
             client.start_recording("聖日礼拝")
+
+    def test_start_recording_with_output_dir_calls_set_record_directory(self):
+        """output_dir 指定時に set_record_directory が呼ばれること"""
+        ws_mock = MagicMock()
+        client = OBSClient(host="localhost", port=4455, password="test", output_dir="D:/録画")
+        client._start_event_loop_thread()
+        client._ws_client = ws_mock
+        client._connected = True
+
+        ws_mock.get_scene_list.return_value = self._make_scene_list_resp(["聖日礼拝"])
+        ws_mock.get_record_status.return_value = self._make_record_status_resp(False)
+
+        client.start_recording("聖日礼拝")
+
+        ws_mock.set_record_directory.assert_called_once_with(record_directory="D:/録画")
+
+    def test_start_recording_without_output_dir_does_not_call_set_record_directory(self):
+        """output_dir 未指定時に set_record_directory が呼ばれないこと"""
+        client, ws = _make_connected_client()
+        # _output_dir はデフォルト空文字列のまま
+        ws.get_scene_list.return_value = self._make_scene_list_resp(["聖日礼拝"])
+        ws.get_record_status.return_value = self._make_record_status_resp(False)
+
+        client.start_recording("聖日礼拝")
+
+        ws.set_record_directory.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

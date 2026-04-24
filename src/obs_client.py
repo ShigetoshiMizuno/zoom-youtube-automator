@@ -53,17 +53,20 @@ class OBSClient:
         client.disconnect()
     """
 
-    def __init__(self, host: str, port: int, password: str) -> None:
+    def __init__(self, host: str, port: int, password: str, output_dir: str = "") -> None:
         """OBSクライアントを初期化する。接続は行わない。
 
         Args:
             host: OBS WebSocket サーバーのホスト名
             port: OBS WebSocket サーバーのポート番号
             password: OBS WebSocket 認証パスワード（空文字列の場合は認証なし）
+            output_dir: 録画ファイルの保存先ディレクトリ。指定した場合は録画開始前に
+                        OBS の保存先を上書き設定する。空文字列の場合は OBS 側のデフォルト設定を使う。
         """
         self._host = host
         self._port = port
         self._password = password
+        self._output_dir = output_dir
 
         self._connected = False
         # 録画を意図的に開始したかどうか（ポーリングで意図しない停止を検知するために使用）
@@ -380,6 +383,10 @@ class OBSClient:
         if status_resp.output_active:
             logger.info("すでに録画中のため StartRecord をスキップします")
             return
+
+        # output_dir が指定されている場合のみ保存先を設定する（start_record 直前）
+        if self._output_dir:
+            self._ws_client.set_record_directory(record_directory=self._output_dir)
 
         # 録画開始
         self._ws_client.start_record()

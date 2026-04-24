@@ -161,7 +161,7 @@ from typing import Callable, Optional
 RecordingStoppedCallback = Callable[[], None]
 
 class OBSClient:
-    def __init__(self, host: str, port: int, password: str) -> None:
+    def __init__(self, host: str, port: int, password: str, output_dir: str = "") -> None:
         """
         OBSクライアントを初期化する。接続は行わない。
         内部で OBS専用スレッドを生成するが、connect() が呼ばれるまで起動しない。
@@ -170,6 +170,7 @@ class OBSClient:
             host: OBS WebSocket サーバーのホスト名
             port: OBS WebSocket サーバーのポート番号
             password: OBS WebSocket 認証パスワード（空文字列の場合は認証なし）
+            output_dir: 録画ファイルの保存先。指定時は録画開始直前にOBSへ注入する。空文字列の場合はOBS側の設定を使用。
         """
         ...
 
@@ -574,8 +575,7 @@ pip install obs-websocket-py
 
 | 項目 | 内容 | 優先度 |
 |------|------|--------|
-| OBSバージョン確認 | 実機の OBS バージョンが v28 以上かどうかを確認する必要あり | High |
-| OBSシーン名の確定 | 実際に使用するシーン名をユーザーに確認し config.yaml.example の obs.scene に記載する | High |
+| OBSシーン名の確定 | ✅ 確定済み：「聖日礼拝」（config.yaml.example に反映済み） | 解決済み |
 | 仮想カメラ API の動作確認 | GetVirtualCamStatus / StartVirtualCam / StopVirtualCam が実機 OBS で利用可能かを確認する | Medium |
 | connect() のタイムアウト値 | TCP 接続タイムアウトを何秒に設定するか（暫定案: 5秒） | Medium |
 | 仮想カメラの事前有効化要件 | OBS WebSocket API 経由で仮想カメラを制御できないバージョンが存在する可能性。その場合はユーザー手動操作にフォールバックする | Medium |
