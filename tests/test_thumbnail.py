@@ -259,3 +259,18 @@ def test_load_font_raises_when_missing_no_fallback(tmp_path: Path) -> None:
     """フォントが存在しないとき fallback=False で OSError"""
     with pytest.raises(OSError):
         load_font(str(tmp_path / "nonexistent.ttc"), size=48, fallback=False)
+
+
+def test_draw_text_wrapped_fallback_line_height(tmp_path: Path) -> None:
+    """getbbox が AttributeError を送出するフォールバック経路で NameError が発生しないこと"""
+    from unittest.mock import MagicMock, patch
+    from src.thumbnail import draw_text_wrapped
+    from PIL import Image, ImageDraw, ImageFont
+
+    img = Image.new("RGB", (400, 200), color=(0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.load_default()
+
+    with patch.object(type(font), "getbbox", side_effect=AttributeError):
+        # NameError が発生しないこと
+        draw_text_wrapped(draw, "テスト テキスト", (0, 0), font, (255, 255, 255), 200)
