@@ -125,6 +125,19 @@ def test_find_obs_hwnd_returns_none_when_not_found(zoom_ctrl):
         assert result is None
 
 
+def test_find_obs_hwnd_ignores_obsidian(zoom_ctrl):
+    """タイトルに 'OBS ' を含まない 'OBSIDIAN' は検出しないこと"""
+    wm = WindowManager(app_hwnd=0, zoom_controller=zoom_ctrl)
+    with mock.patch("src.window_manager.win32gui") as m:
+        def enum_side_effect(cb, _):
+            cb(111, None)
+        m.EnumWindows.side_effect = enum_side_effect
+        m.IsWindowVisible.return_value = True
+        m.GetWindowText.return_value = "OBSIDIAN"
+        result = wm._find_obs_hwnd()
+        assert result is None
+
+
 # ---------------------------------------------------------------------------
 # arrange_zoom
 # ---------------------------------------------------------------------------
@@ -134,6 +147,16 @@ def test_arrange_zoom_skips_when_layout_none(zoom_ctrl):
     wm = WindowManager(app_hwnd=0, zoom_controller=zoom_ctrl, zoom_layout=None)
     wm.arrange_zoom()
     zoom_ctrl.set_window_position.assert_not_called()
+
+
+def test_arrange_zoom_skips_set_position_when_layout_none_but_hwnd_found(zoom_ctrl):
+    """zoom_layout=None だが Zoom ウィンドウが見つかる場合、set_window_position は呼ばれない"""
+    zoom_ctrl.get_window_hwnd.return_value = 12345  # hwnd はある
+    wm = WindowManager(app_hwnd=0, zoom_controller=zoom_ctrl, zoom_layout=None)
+    with mock.patch("src.window_manager.win32gui") as m:
+        m.GetWindowRect.return_value = (0, 0, 300, 200)  # ミニビュー相当
+        wm.arrange_zoom()
+        zoom_ctrl.set_window_position.assert_not_called()
 
 
 def test_arrange_zoom_calls_set_window_position(zoom_ctrl):

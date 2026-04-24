@@ -536,6 +536,24 @@ class TestWindowManagerIntegration(unittest.TestCase):
         """headless=True + config=None の場合は _window_manager が None であること。"""
         self.assertIsNone(_shared_app._window_manager)
 
+    def test_window_manager_created_with_window_manager_config(self):
+        """config に window_manager キーがある場合 _window_manager が生成されること"""
+        obs = mock.MagicMock()
+        zoom = mock.MagicMock()
+        config = {
+            "window_manager": {
+                "app": {"x": 0, "y": 0, "width": 480, "height": 360},
+            }
+        }
+        a = App(
+            obs_client=obs,
+            zoom_controller=zoom,
+            config=config,
+            headless=True,
+        )
+        assert a._window_manager is not None
+        a.destroy()
+
 
 if __name__ == "__main__":
     unittest.main()

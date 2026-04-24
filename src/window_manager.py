@@ -74,7 +74,7 @@ class WindowManager:
                 rect = win32gui.GetWindowRect(hwnd)
                 current_width = rect[2] - rect[0]
                 if current_width < self._zoom_mini_view_threshold:
-                    logger.info(
+                    logger.warning(
                         "Zoom ミニ会議ビューを検出しましたが zoom_layout が未設定のためリサイズできません。"
                     )
             return

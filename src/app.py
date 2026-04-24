@@ -553,8 +553,8 @@ class App(tk.Tk):
         if self._zoom_controller is None:
             return None
 
-        from src.zoom_controller import WindowPosition
-        from src.window_manager import WindowManager
+        from zoom_controller import WindowPosition
+        from window_manager import WindowManager
 
         app_cfg = wm_cfg.get("app", {})
         app_layout = WindowPosition(
