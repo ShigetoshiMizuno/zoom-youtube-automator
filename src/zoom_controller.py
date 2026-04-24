@@ -72,6 +72,9 @@ def _is_zoom_window(hwnd: int) -> bool:
     if not win32gui.IsWindowVisible(hwnd):
         return False
     title = win32gui.GetWindowText(hwnd)
+    # TODO: 実機確認後にクラス名フィルタを追加する
+    # SPEC §4.2: 候補クラス名 "ZPContentViewWndClass", "VideoFrameWndClass"
+    # win32gui.GetClassName(hwnd) でクラス名を取得して照合する
     return any(pattern in title for pattern in _ZOOM_TITLE_PATTERNS)
 
 
@@ -110,10 +113,20 @@ class ZoomController:
     def _check_zoom_installed(self) -> None:
         """Zoom がインストールされているか（zoommtg:// スキームがレジストリに存在するか）確認する。
 
-        レジストリキーが存在しない場合は ZoomSchemeNotRegisteredError を送出する。
+        SPEC §9.2 に従い、以下の2段階でチェックする。
+        - HKEY_CLASSES_ROOT/zoommtg が存在しない → ZoomNotInstalledError（Zoom 未インストール）
+        - HKEY_CLASSES_ROOT/zoommtg/shell/open/command が存在しない → ZoomSchemeNotRegisteredError
+          （インストール済みだがスキーム登録が壊れている）
         """
         try:
             winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, "zoommtg")
+        except FileNotFoundError:
+            raise ZoomNotInstalledError(
+                "Zoom がインストールされていません。Zoom をインストールしてください。"
+            )
+
+        try:
+            winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, r"zoommtg\shell\open\command")
         except FileNotFoundError:
             raise ZoomSchemeNotRegisteredError(
                 "zoommtg:// スキームがレジストリに登録されていません。"

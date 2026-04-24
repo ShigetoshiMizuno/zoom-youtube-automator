@@ -129,10 +129,12 @@ class TestRegistryCheck(unittest.TestCase):
         return ZoomController(cfg)
 
     def test_raises_scheme_not_registered_when_key_missing(self) -> None:
+        """zoommtg は存在するが shell/open/command がない場合に ZoomSchemeNotRegisteredError が送出されること。"""
         ctrl = self._make_controller()
         with patch("src.zoom_controller.winreg") as mock_winreg:
             mock_winreg.HKEY_CLASSES_ROOT = 0x80000000
-            mock_winreg.OpenKey.side_effect = FileNotFoundError
+            # 1回目の OpenKey（zoommtg）は成功、2回目（shell\open\command）は失敗
+            mock_winreg.OpenKey.side_effect = [MagicMock(), FileNotFoundError]
             with self.assertRaises(ZoomSchemeNotRegisteredError):
                 ctrl._check_zoom_installed()
 
