@@ -68,9 +68,13 @@ class App(tk.Tk):
                 )
             )
         self.zoom_controller = zoom_controller
+        self._zoom_controller = zoom_controller
 
         self.youtube_uploader: Optional[Callable] = youtube_uploader
         self.thumbnail_generator: Optional[Callable] = thumbnail_generator
+
+        # WindowManager の初期化
+        self._window_manager = self._build_window_manager(headless)
 
         # 状態管理
         self.state: AppState = AppState.IDLE
@@ -288,6 +292,12 @@ class App(tk.Tk):
                         "（録画は継続しています）",
                     ),
                 )
+
+            if self._window_manager is not None:
+                try:
+                    self._window_manager.arrange_all()
+                except Exception as exc:
+                    logger.warning("ウィンドウ整列に失敗しました: %s", exc)
 
         t = threading.Thread(target=_background, daemon=True)
         t.start()
@@ -534,6 +544,46 @@ class App(tk.Tk):
     # ------------------------------------------------------------------
     # 内部ヘルパー
     # ------------------------------------------------------------------
+
+    def _build_window_manager(self, headless: bool):
+        """config から WindowManager を生成して返す。window_manager キーがなければ None。"""
+        wm_cfg = self._config.get("window_manager", {})
+        if not wm_cfg:
+            return None
+        if self._zoom_controller is None:
+            return None
+
+        from zoom_controller import WindowPosition
+        from window_manager import WindowManager
+
+        app_cfg = wm_cfg.get("app", {})
+        app_layout = WindowPosition(
+            x=app_cfg.get("x", 0),
+            y=app_cfg.get("y", 0),
+            width=app_cfg.get("width", 480),
+            height=app_cfg.get("height", 360),
+        )
+
+        obs_cfg = wm_cfg.get("obs")
+        obs_layout = WindowPosition(
+            x=obs_cfg["x"], y=obs_cfg["y"],
+            width=obs_cfg["width"], height=obs_cfg["height"],
+        ) if obs_cfg else None
+
+        zoom_cfg = self._config.get("zoom", {}).get("window_position")
+        zoom_layout = WindowPosition(
+            x=zoom_cfg["x"], y=zoom_cfg["y"],
+            width=zoom_cfg["width"], height=zoom_cfg["height"],
+        ) if zoom_cfg else None
+
+        return WindowManager(
+            app_hwnd=self.winfo_id() if not headless else 0,
+            zoom_controller=self._zoom_controller,
+            app_layout=app_layout,
+            obs_layout=obs_layout,
+            zoom_layout=zoom_layout,
+            zoom_mini_view_threshold=wm_cfg.get("zoom_mini_view_threshold", 400),
+        )
 
     def _handle_obs_error(self):
         """OBS起動失敗時の処理。"""
