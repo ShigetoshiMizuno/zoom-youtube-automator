@@ -222,6 +222,10 @@ class ZoomController:
         win32gui.SetForegroundWindow(hwnd)
         win32gui.MoveWindow(hwnd, position.x, position.y, position.width, position.height, True)
 
+    def get_window_hwnd(self) -> Optional[int]:
+        """Zoom ミーティングウィンドウの HWND を返す。見つからなければ None。"""
+        return _find_zoom_hwnd()
+
     def is_meeting_active(self) -> bool:
         """Zoom ミーティングウィンドウが存在すれば True を返す。"""
         return _find_zoom_hwnd() is not None
