@@ -1,0 +1,11 @@
+{
+  "token": "dummy_access_token",
+  "refresh_token": "dummy_refresh_token",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "client_id": "dummy_client_id.apps.googleusercontent.com",
+  "client_secret": "dummy_client_secret",
+  "scopes": [
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube.force-ssl"
+  ]
+}
