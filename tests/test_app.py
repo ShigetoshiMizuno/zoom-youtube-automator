@@ -3,11 +3,15 @@
 TkinterのGUIをheadlessモードで検証する。
 App.__init__ の headless=True でウィンドウを非表示にし、
 モックを注入して各機能を検証する。
+
+注意: Tkinter の Tk インスタンスはプロセス内でひとつのみ正常に動作する。
+      全テストで単一の App インスタンスを共有する方式を採用する。
 """
 
 import datetime
 import sys
 import time
+import tkinter as tk
 import unittest
 import unittest.mock as mock
 from pathlib import Path
@@ -19,45 +23,81 @@ from app import App, AppState
 
 
 # ---------------------------------------------------------------------------
-# フィクスチャ
+# テストスイート全体で共有する単一 App インスタンス
 # ---------------------------------------------------------------------------
 
-def make_app(**kwargs):
-    """テスト用 App インスタンスを生成する。
+_shared_obs = None
+_shared_zoom = None
+_shared_youtube = None
+_shared_thumb = None
+_shared_app: App = None
 
-    デフォルトでモックを注入し、headless=True で起動する。
-    追加キーワード引数で各モックを上書きできる。
-    """
-    obs = mock.MagicMock()
-    zoom = mock.MagicMock()
-    youtube = mock.MagicMock()
-    thumb = mock.MagicMock()
 
-    defaults = dict(
-        obs_client=obs,
-        zoom_controller=zoom,
-        youtube_uploader=youtube,
-        thumbnail_generator=thumb,
+def setUpModule():
+    """モジュール開始時に App インスタンスを1つ作成する。"""
+    global _shared_obs, _shared_zoom, _shared_youtube, _shared_thumb, _shared_app
+    _shared_obs = mock.MagicMock()
+    _shared_zoom = mock.MagicMock()
+    _shared_youtube = mock.MagicMock()
+    _shared_thumb = mock.MagicMock()
+    _shared_app = App(
+        obs_client=_shared_obs,
+        zoom_controller=_shared_zoom,
+        youtube_uploader=_shared_youtube,
+        thumbnail_generator=_shared_thumb,
         headless=True,
     )
-    defaults.update(kwargs)
-    a = App(**defaults)
-    return a
 
 
-def wait_for_threads(timeout=2.0):
-    """バックグラウンドスレッドが完了するまで待機する。"""
-    import threading
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        # daemon スレッド以外が残っていなければ終了
-        non_daemon = [
-            t for t in threading.enumerate()
-            if not t.daemon and t is not threading.current_thread()
-        ]
-        if not non_daemon:
-            break
-        time.sleep(0.05)
+def tearDownModule():
+    """モジュール終了時に App を破棄する。"""
+    global _shared_app
+    if _shared_app is not None:
+        try:
+            _shared_app.update()
+        except Exception:
+            pass
+        try:
+            _shared_app.destroy()
+        except Exception:
+            pass
+        _shared_app = None
+
+
+def reset_app():
+    """テスト間で App の状態を IDLE にリセットし、モックをクリアする。"""
+    global _shared_obs, _shared_zoom, _shared_youtube, _shared_thumb, _shared_app
+
+    # モックのコール履歴をリセット
+    _shared_obs.reset_mock()
+    _shared_zoom.reset_mock()
+    _shared_youtube.reset_mock()
+    _shared_thumb.reset_mock()
+
+    # タイマーを止める
+    _shared_app._stop_elapsed_timer()
+    _shared_app._stop_obs_poll()
+
+    # フォームを初期状態に戻す
+    for entry in _shared_app._form_entries:
+        try:
+            entry.config(state="normal")
+        except Exception:
+            pass
+
+    today = datetime.date.today()
+    today_str = f"{today.year}年{today.month}月{today.day}日"
+
+    _shared_app.entry_date.delete(0, "end")
+    _shared_app.entry_date.insert(0, today_str)
+    _shared_app.entry_title.delete(0, "end")
+    _shared_app.entry_scripture.delete(0, "end")
+    _shared_app.entry_preacher.delete(0, "end")
+
+    # 状態を IDLE に戻す
+    _shared_app._apply_state(AppState.IDLE)
+    _shared_app.lbl_status.config(text="状態: 待機中", fg="#888888")
+    _shared_app._recording_start_time = None
 
 
 # ---------------------------------------------------------------------------
@@ -67,27 +107,24 @@ def wait_for_threads(timeout=2.0):
 class TestInitialization(unittest.TestCase):
 
     def setUp(self):
-        self.app = make_app()
-
-    def tearDown(self):
-        self.app.destroy()
+        reset_app()
 
     def test_initial_state_is_idle(self):
-        self.assertEqual(self.app.state, AppState.IDLE)
+        self.assertEqual(_shared_app.state, AppState.IDLE)
 
     def test_initial_date_is_today(self):
         today = datetime.date.today()
         expected = f"{today.year}年{today.month}月{today.day}日"
-        self.assertEqual(self.app.entry_date.get(), expected)
+        self.assertEqual(_shared_app.entry_date.get(), expected)
 
     def test_initial_btn_start_enabled(self):
-        self.assertEqual(str(self.app.btn_start["state"]), "normal")
+        self.assertEqual(str(_shared_app.btn_start["state"]), "normal")
 
     def test_initial_btn_stop_disabled(self):
-        self.assertEqual(str(self.app.btn_stop["state"]), "disabled")
+        self.assertEqual(str(_shared_app.btn_stop["state"]), "disabled")
 
     def test_initial_visibility_is_public(self):
-        self.assertEqual(self.app.var_visibility.get(), "public")
+        self.assertEqual(_shared_app.var_visibility.get(), "public")
 
 
 # ---------------------------------------------------------------------------
@@ -97,44 +134,41 @@ class TestInitialization(unittest.TestCase):
 class TestValidation(unittest.TestCase):
 
     def setUp(self):
-        self.app = make_app()
-
-    def tearDown(self):
-        self.app.destroy()
+        reset_app()
 
     @mock.patch("tkinter.messagebox.showwarning")
     def test_start_validation_empty_title_shows_warning(self, mock_warn):
         # entry_date に値あり、title は空のまま
-        self.app.entry_scripture.delete(0, "end")
-        self.app.entry_scripture.insert(0, "テスト箇所")
-        self.app.entry_preacher.delete(0, "end")
-        self.app.entry_preacher.insert(0, "テスト説教者")
+        _shared_app.entry_scripture.delete(0, "end")
+        _shared_app.entry_scripture.insert(0, "テスト箇所")
+        _shared_app.entry_preacher.delete(0, "end")
+        _shared_app.entry_preacher.insert(0, "テスト説教者")
         # title は空のまま
-        self.app.on_start_click()
+        _shared_app.on_start_click()
         mock_warn.assert_called_once()
-        self.assertEqual(self.app.state, AppState.IDLE)
+        self.assertEqual(_shared_app.state, AppState.IDLE)
 
     @mock.patch("tkinter.messagebox.showwarning")
     def test_start_validation_empty_date_shows_warning(self, mock_warn):
-        self.app.entry_date.delete(0, "end")
+        _shared_app.entry_date.delete(0, "end")
         # date を空にして呼び出す
-        self.app.on_start_click()
+        _shared_app.on_start_click()
         mock_warn.assert_called_once()
 
     @mock.patch("tkinter.messagebox.showwarning")
     def test_start_validation_all_filled_proceeds(self, mock_warn):
-        self.app.entry_date.delete(0, "end")
-        self.app.entry_date.insert(0, "2026年4月25日")
-        self.app.entry_title.delete(0, "end")
-        self.app.entry_title.insert(0, "テストタイトル")
-        self.app.entry_scripture.delete(0, "end")
-        self.app.entry_scripture.insert(0, "テスト箇所")
-        self.app.entry_preacher.delete(0, "end")
-        self.app.entry_preacher.insert(0, "テスト説教者")
-        self.app.on_start_click()
+        _shared_app.entry_date.delete(0, "end")
+        _shared_app.entry_date.insert(0, "2026年4月25日")
+        _shared_app.entry_title.delete(0, "end")
+        _shared_app.entry_title.insert(0, "テストタイトル")
+        _shared_app.entry_scripture.delete(0, "end")
+        _shared_app.entry_scripture.insert(0, "テスト箇所")
+        _shared_app.entry_preacher.delete(0, "end")
+        _shared_app.entry_preacher.insert(0, "テスト説教者")
+        _shared_app.on_start_click()
         mock_warn.assert_not_called()
         # 状態が RECORDING に遷移していること
-        self.assertEqual(self.app.state, AppState.RECORDING)
+        self.assertEqual(_shared_app.state, AppState.RECORDING)
 
 
 # ---------------------------------------------------------------------------
@@ -144,55 +178,55 @@ class TestValidation(unittest.TestCase):
 class TestStateTransitions(unittest.TestCase):
 
     def setUp(self):
-        self.app = make_app()
-
-    def tearDown(self):
-        self.app.destroy()
+        reset_app()
 
     def _go_to_recording(self):
         """RECORDING状態に遷移させる（バリデーションを通過させる）。"""
-        self.app.entry_date.delete(0, "end")
-        self.app.entry_date.insert(0, "2026年4月25日")
-        self.app.entry_title.delete(0, "end")
-        self.app.entry_title.insert(0, "テストタイトル")
-        self.app.entry_scripture.delete(0, "end")
-        self.app.entry_scripture.insert(0, "テスト箇所")
-        self.app.entry_preacher.delete(0, "end")
-        self.app.entry_preacher.insert(0, "テスト説教者")
+        _shared_app.entry_date.delete(0, "end")
+        _shared_app.entry_date.insert(0, "2026年4月25日")
+        _shared_app.entry_title.delete(0, "end")
+        _shared_app.entry_title.insert(0, "テストタイトル")
+        _shared_app.entry_scripture.delete(0, "end")
+        _shared_app.entry_scripture.insert(0, "テスト箇所")
+        _shared_app.entry_preacher.delete(0, "end")
+        _shared_app.entry_preacher.insert(0, "テスト説教者")
         with mock.patch("tkinter.messagebox.showwarning"):
-            self.app.on_start_click()
+            _shared_app.on_start_click()
 
     def test_transition_to_recording_disables_start_btn(self):
         self._go_to_recording()
-        self.assertEqual(str(self.app.btn_start["state"]), "disabled")
+        self.assertEqual(str(_shared_app.btn_start["state"]), "disabled")
 
     def test_transition_to_recording_enables_stop_btn(self):
         self._go_to_recording()
-        self.assertEqual(str(self.app.btn_stop["state"]), "normal")
+        self.assertEqual(str(_shared_app.btn_stop["state"]), "normal")
 
     def test_transition_to_recording_disables_form(self):
         self._go_to_recording()
-        self.assertEqual(str(self.app.entry_title["state"]), "disabled")
+        self.assertEqual(str(_shared_app.entry_title["state"]), "disabled")
 
     def test_transition_to_uploading_disables_both_btns(self):
-        self.app._apply_state(AppState.UPLOADING)
-        self.assertEqual(str(self.app.btn_start["state"]), "disabled")
-        self.assertEqual(str(self.app.btn_stop["state"]), "disabled")
+        _shared_app._apply_state(AppState.UPLOADING)
+        self.assertEqual(str(_shared_app.btn_start["state"]), "disabled")
+        self.assertEqual(str(_shared_app.btn_stop["state"]), "disabled")
 
     def test_transition_to_done_enables_start_btn(self):
-        self.app._apply_state(AppState.DONE)
-        self.assertEqual(str(self.app.btn_start["state"]), "normal")
+        _shared_app._apply_state(AppState.DONE)
+        self.assertEqual(str(_shared_app.btn_start["state"]), "normal")
 
     def test_transition_to_done_shows_reset_btn(self):
-        self.app._apply_state(AppState.DONE)
-        # btn_reset が表示されている（pack/grid されている）こと
-        # winfo_ismapped() で確認
-        self.app.update_idletasks()
-        self.assertTrue(self.app.btn_reset.winfo_ismapped())
+        _shared_app._apply_state(AppState.DONE)
+        # btn_reset が pack 済みであること（headless でも pack_info() は機能する）
+        try:
+            _shared_app.btn_reset.pack_info()
+            is_packed = True
+        except tk.TclError:
+            is_packed = False
+        self.assertTrue(is_packed)
 
     def test_transition_to_error_enables_start_btn(self):
-        self.app._apply_state(AppState.ERROR)
-        self.assertEqual(str(self.app.btn_start["state"]), "normal")
+        _shared_app._apply_state(AppState.ERROR)
+        self.assertEqual(str(_shared_app.btn_start["state"]), "normal")
 
 
 # ---------------------------------------------------------------------------
@@ -202,34 +236,37 @@ class TestStateTransitions(unittest.TestCase):
 class TestOnStartClick(unittest.TestCase):
 
     def setUp(self):
-        self.obs = mock.MagicMock()
-        self.zoom = mock.MagicMock()
-        self.app = make_app(obs_client=self.obs, zoom_controller=self.zoom)
-        # フォームを埋める
-        self.app.entry_date.delete(0, "end")
-        self.app.entry_date.insert(0, "2026年4月25日")
-        self.app.entry_title.delete(0, "end")
-        self.app.entry_title.insert(0, "テストタイトル")
-        self.app.entry_scripture.delete(0, "end")
-        self.app.entry_scripture.insert(0, "テスト箇所")
-        self.app.entry_preacher.delete(0, "end")
-        self.app.entry_preacher.insert(0, "テスト説教者")
-
-    def tearDown(self):
-        self.app.destroy()
+        reset_app()
+        _shared_app.entry_date.delete(0, "end")
+        _shared_app.entry_date.insert(0, "2026年4月25日")
+        _shared_app.entry_title.delete(0, "end")
+        _shared_app.entry_title.insert(0, "テストタイトル")
+        _shared_app.entry_scripture.delete(0, "end")
+        _shared_app.entry_scripture.insert(0, "テスト箇所")
+        _shared_app.entry_preacher.delete(0, "end")
+        _shared_app.entry_preacher.insert(0, "テスト説教者")
 
     def test_on_start_calls_obs_start_recording(self):
-        self.app.on_start_click()
+        _shared_app.on_start_click()
         # バックグラウンドスレッドが完了するまで待つ
         time.sleep(0.3)
-        self.app.update()
-        self.obs.start_recording.assert_called_once()
+        _shared_app.update()
+        _shared_obs.start_recording.assert_called_once()
 
     def test_on_start_calls_zoom_join_meeting(self):
-        self.app.on_start_click()
+        reset_app()
+        _shared_app.entry_date.delete(0, "end")
+        _shared_app.entry_date.insert(0, "2026年4月25日")
+        _shared_app.entry_title.delete(0, "end")
+        _shared_app.entry_title.insert(0, "テストタイトル")
+        _shared_app.entry_scripture.delete(0, "end")
+        _shared_app.entry_scripture.insert(0, "テスト箇所")
+        _shared_app.entry_preacher.delete(0, "end")
+        _shared_app.entry_preacher.insert(0, "テスト説教者")
+        _shared_app.on_start_click()
         time.sleep(0.3)
-        self.app.update()
-        self.zoom.join_meeting.assert_called_once()
+        _shared_app.update()
+        _shared_zoom.join_meeting.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -239,35 +276,25 @@ class TestOnStartClick(unittest.TestCase):
 class TestOnStopClick(unittest.TestCase):
 
     def setUp(self):
-        self.obs = mock.MagicMock()
-        self.obs.stop_recording.return_value = "/tmp/test.mp4"
-        self.youtube = mock.MagicMock()
-        self.youtube.return_value = "https://www.youtube.com/watch?v=TEST"
-        self.thumb = mock.MagicMock()
-        self.thumb.return_value = "/tmp/thumbnail.png"
-        self.app = make_app(
-            obs_client=self.obs,
-            youtube_uploader=self.youtube,
-            thumbnail_generator=self.thumb,
-        )
+        reset_app()
+        _shared_obs.stop_recording.return_value = "/tmp/test.mp4"
+        _shared_youtube.return_value = "https://www.youtube.com/watch?v=TEST"
+        _shared_thumb.return_value = "/tmp/thumbnail.png"
         # RECORDING状態に直接設定する
-        self.app._apply_state(AppState.RECORDING)
-        self.app._recording_start_time = datetime.datetime.now()
-
-    def tearDown(self):
-        self.app.destroy()
+        _shared_app._apply_state(AppState.RECORDING)
+        _shared_app._recording_start_time = datetime.datetime.now()
 
     @mock.patch("tkinter.messagebox.askokcancel", return_value=False)
     def test_on_stop_cancelled_when_dialog_returns_false(self, mock_dialog):
-        self.app.on_stop_click()
-        self.assertEqual(self.app.state, AppState.RECORDING)
+        _shared_app.on_stop_click()
+        self.assertEqual(_shared_app.state, AppState.RECORDING)
 
     @mock.patch("tkinter.messagebox.askokcancel", return_value=True)
     def test_on_stop_calls_obs_stop_recording(self, mock_dialog):
-        self.app.on_stop_click()
+        _shared_app.on_stop_click()
         time.sleep(0.3)
-        self.app.update()
-        self.obs.stop_recording.assert_called_once()
+        _shared_app.update()
+        _shared_obs.stop_recording.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -277,40 +304,40 @@ class TestOnStopClick(unittest.TestCase):
 class TestOnResetClick(unittest.TestCase):
 
     def setUp(self):
-        self.app = make_app()
+        reset_app()
         # DONE状態にして btn_reset を表示させる
-        self.app._apply_state(AppState.DONE)
-        self.app.update_idletasks()
-        # フィールドに値を設定する
-        self.app.entry_title.config(state="normal")
-        self.app.entry_title.delete(0, "end")
-        self.app.entry_title.insert(0, "テストタイトル")
-        self.app.entry_scripture.config(state="normal")
-        self.app.entry_scripture.delete(0, "end")
-        self.app.entry_scripture.insert(0, "テスト箇所")
-        self.app.entry_preacher.config(state="normal")
-        self.app.entry_preacher.delete(0, "end")
-        self.app.entry_preacher.insert(0, "テスト説教者")
-
-    def tearDown(self):
-        self.app.destroy()
+        _shared_app._apply_state(AppState.DONE)
+        # フィールドを編集可能にして値を設定する
+        for entry in _shared_app._form_entries:
+            entry.config(state="normal")
+        _shared_app.entry_title.delete(0, "end")
+        _shared_app.entry_title.insert(0, "テストタイトル")
+        _shared_app.entry_scripture.delete(0, "end")
+        _shared_app.entry_scripture.insert(0, "テスト箇所")
+        _shared_app.entry_preacher.delete(0, "end")
+        _shared_app.entry_preacher.insert(0, "テスト説教者")
 
     def test_on_reset_clears_title(self):
-        self.app.on_reset_click()
-        self.assertEqual(self.app.entry_title.get(), "")
+        _shared_app.on_reset_click()
+        self.assertEqual(_shared_app.entry_title.get(), "")
 
     def test_on_reset_clears_scripture(self):
-        self.app.on_reset_click()
-        self.assertEqual(self.app.entry_scripture.get(), "")
+        _shared_app.on_reset_click()
+        self.assertEqual(_shared_app.entry_scripture.get(), "")
 
     def test_on_reset_restores_idle_state(self):
-        self.app.on_reset_click()
-        self.assertEqual(self.app.state, AppState.IDLE)
+        _shared_app.on_reset_click()
+        self.assertEqual(_shared_app.state, AppState.IDLE)
 
     def test_on_reset_hides_reset_btn(self):
-        self.app.on_reset_click()
-        self.app.update_idletasks()
-        self.assertFalse(self.app.btn_reset.winfo_ismapped())
+        _shared_app.on_reset_click()
+        # pack_forget() された後は pack_info() が TclError を raise する
+        try:
+            _shared_app.btn_reset.pack_info()
+            is_packed = True
+        except tk.TclError:
+            is_packed = False
+        self.assertFalse(is_packed)
 
 
 # ---------------------------------------------------------------------------
@@ -320,37 +347,30 @@ class TestOnResetClick(unittest.TestCase):
 class TestOnCloseHandler(unittest.TestCase):
 
     def setUp(self):
-        self.obs = mock.MagicMock()
-        self.app = make_app(obs_client=self.obs)
-
-    def tearDown(self):
-        try:
-            self.app.destroy()
-        except Exception:
-            pass
+        reset_app()
 
     @mock.patch("tkinter.messagebox.askokcancel")
     def test_close_in_idle_destroys_without_dialog(self, mock_dialog):
-        with mock.patch.object(self.app, "destroy") as mock_destroy:
-            self.app.on_close_handler()
+        with mock.patch.object(_shared_app, "destroy") as mock_destroy:
+            _shared_app.on_close_handler()
             mock_dialog.assert_not_called()
             mock_destroy.assert_called_once()
 
     @mock.patch("tkinter.messagebox.askokcancel", return_value=False)
     def test_close_in_recording_asks_confirmation(self, mock_dialog):
-        self.app._apply_state(AppState.RECORDING)
-        self.app._recording_start_time = datetime.datetime.now()
-        with mock.patch.object(self.app, "destroy"):
-            self.app.on_close_handler()
+        _shared_app._apply_state(AppState.RECORDING)
+        _shared_app._recording_start_time = datetime.datetime.now()
+        with mock.patch.object(_shared_app, "destroy"):
+            _shared_app.on_close_handler()
         mock_dialog.assert_called_once()
 
     @mock.patch("tkinter.messagebox.askokcancel", return_value=True)
     def test_close_in_recording_stops_obs_on_confirm(self, mock_dialog):
-        self.app._apply_state(AppState.RECORDING)
-        self.app._recording_start_time = datetime.datetime.now()
-        with mock.patch.object(self.app, "destroy"):
-            self.app.on_close_handler()
-        self.obs.stop_recording.assert_called_once()
+        _shared_app._apply_state(AppState.RECORDING)
+        _shared_app._recording_start_time = datetime.datetime.now()
+        with mock.patch.object(_shared_app, "destroy"):
+            _shared_app.on_close_handler()
+        _shared_obs.stop_recording.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -360,13 +380,10 @@ class TestOnCloseHandler(unittest.TestCase):
 class TestObsStatusLabel(unittest.TestCase):
 
     def setUp(self):
-        self.app = make_app()
-
-    def tearDown(self):
-        self.app.destroy()
+        reset_app()
 
     def test_obs_status_label_exists(self):
-        self.assertIsNotNone(self.app.lbl_obs_status)
+        self.assertIsNotNone(_shared_app.lbl_obs_status)
 
 
 if __name__ == "__main__":
