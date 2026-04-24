@@ -8,6 +8,36 @@ obs:
 zoom:
   meeting_id: "123-456-7890"
   password: "your_zoom_password"
+  display_name: "配信"
+  join_timeout: 30
+  window_position:
+    x: 1300
+    y: 400
+    width: 1280
+    height: 720
 
 youtube:
   account: "your@gmail.com"
+  credentials_path: "credentials.json"
+  token_path: "token.json"
+  default_visibility: "public"
+
+thumbnail:
+  template_path: "assets/thumbnail_template.png"
+  font_path: "C:/Windows/Fonts/meiryob.ttc"
+  output_dir: "C:/録画/thumbnails"
+
+window_manager:
+  app:
+    x: 0
+    y: 0
+    width: 480
+    height: 360
+  obs:
+    x: 0
+    y: 400
+    width: 1280
+    height: 720
+  zoom_mini_view_threshold: 400
+
+log_path: "app.log"
