@@ -9,4 +9,11 @@ config.yaml
 .env
 __pycache__/
 *.pyc
+credentials.json
+token.json
+credentials/
+datasample.gitignore/
+# テスト用フィクスチャは除外対象から外す
+!tests/fixtures/test_video.mp4
+!tests/fixtures/test_thumbnail.png
 datasample.gitignore/
