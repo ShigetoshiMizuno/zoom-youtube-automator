@@ -159,6 +159,35 @@ class TestAuthenticate(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             authenticate('/nonexistent/path/credentials.json', DUMMY_TOKEN)
 
+    @patch('youtube_uploader.build')
+    @patch('youtube_uploader.InstalledAppFlow')
+    @patch('youtube_uploader.Credentials')
+    def test_token_expired_triggers_reauth(self, mock_credentials_cls, mock_flow_cls, mock_build):
+        """リフレッシュトークンが無効な場合にInstalledAppFlowが起動すること"""
+        mock_creds = MagicMock()
+        mock_creds.valid = False
+        mock_creds.expired = True
+        mock_creds.refresh_token = None
+        mock_credentials_cls.from_authorized_user_file.return_value = mock_creds
+
+        mock_flow = MagicMock()
+        mock_flow_cls.from_client_secrets_file.return_value = mock_flow
+        new_creds = MagicMock()
+        new_creds.to_json.return_value = json.dumps({'token': 'new_token'})
+        mock_flow.run_local_server.return_value = new_creds
+        mock_build.return_value = MagicMock()
+
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            authenticate(DUMMY_CREDENTIALS, tmp_path)
+            mock_flow_cls.from_client_secrets_file.assert_called_once()
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
 
 # ---------------------------------------------------------------------------
 # upload_video テスト
@@ -272,6 +301,23 @@ class TestUploadVideo(unittest.TestCase):
         upload_video(service, TEST_VIDEO, 'タイトル', '説明', TEST_THUMBNAIL, 'public')
 
         mock_set_thumbnail.assert_called_once_with(service, 'thumb_test_id', TEST_THUMBNAIL)
+
+    @patch('youtube_uploader.MediaFileUpload')
+    def test_progress_callback_receives_100_on_completion(self, mock_media_upload):
+        """アップロード完了時にprogress_callbackが100で呼ばれること"""
+        service = self._make_service()
+        mock_request = MagicMock()
+        service.videos.return_value.insert.return_value = mock_request
+
+        mock_response = {'id': 'complete_id'}
+        # 1回のnext_chunk呼び出しでstatus=None（即完了）を返す
+        mock_request.next_chunk.side_effect = [(None, mock_response)]
+
+        callback_values = []
+        upload_video(service, TEST_VIDEO, 'タイトル', '説明', None, 'public',
+                     progress_callback=lambda p: callback_values.append(p))
+
+        self.assertIn(100, callback_values)
 
     @patch('youtube_uploader._set_thumbnail')
     @patch('youtube_uploader.MediaFileUpload')
