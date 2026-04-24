@@ -147,7 +147,7 @@ class TestRegistryCheck(unittest.TestCase):
 
 class TestJoinMeeting(unittest.TestCase):
     def _make_controller(self, **kwargs: object) -> ZoomController:
-        cfg = ZoomConfig(meeting_id="123-456-7890", join_timeout=2, **kwargs)  # type: ignore[arg-type]
+        cfg = ZoomConfig(meeting_id="123-456-7890", **kwargs)  # type: ignore[arg-type]
         return ZoomController(cfg)
 
     def _setup_window_found(self, mock_win32gui: MagicMock) -> None:
