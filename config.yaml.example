@@ -2,7 +2,7 @@ obs:
   host: localhost
   port: 4455
   password: "your_obs_websocket_password"
-  scene: "礼拝"
+  scene: "聖日礼拝"
   output_dir: "C:/録画"
 
 zoom:
