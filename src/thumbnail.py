@@ -225,7 +225,7 @@ def draw_text_wrapped(
         line_height = bbox[3] - bbox[1]
     except AttributeError:
         # 旧 Pillow のフォールバック
-        line_height = size if hasattr(font, "size") else 16  # type: ignore[attr-defined]
+        line_height = font.size if hasattr(font, "size") else 16  # type: ignore[attr-defined]
 
     # 1文字ずつ処理してmax_widthを超えたら改行する
     lines = []
