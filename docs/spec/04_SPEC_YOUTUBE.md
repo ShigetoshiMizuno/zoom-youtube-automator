@@ -391,8 +391,8 @@ tests/
 | 説明文テンプレート | 調布南キリスト教会の正式な説明文定型文フォーマットを確定する（チャンネルURL含む） | Medium |
 | token.json の保存先 | config.yaml 内に token_path として管理する方針だが、Windows 資格情報マネージャー（keyring ライブラリ）への移行を将来的に検討する | Low |
 | アップロード後のリトライUI | UploadError 発生時に GUI 上で手動リトライボタンを提供するか・自動リトライのみとするかを確定する | Medium |
-| チャンネルID | アップロード先チャンネルIDの確定（固定アカウントのデフォルトチャンネルを使用する前提） | High |
-| Google Cloud プロジェクト | 本番運用で使用する Google Cloud プロジェクト名・credentials.json の管理者を確定する | High |
+| チャンネルID | ✅ 確定済み：デフォルトチャンネルを使用。config.yaml の `youtube.channel_id` で上書き可能 | 解決済み |
+| Google Cloud プロジェクト | ✅ 確定済み：YouTubeアカウントの持ち主（教会スタッフ）が初回セットアップを実施 | 解決済み |
 
 ---
 
